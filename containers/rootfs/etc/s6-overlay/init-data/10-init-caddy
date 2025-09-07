@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+
+/etc/s6-overlay/scripts/caddy-vaultwarden

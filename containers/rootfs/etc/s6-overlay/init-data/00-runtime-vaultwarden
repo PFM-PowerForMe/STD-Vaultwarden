@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -e
+
+mkdir -pv ${VW_WORKDIR}
+chown www-data:www-data -R ${VW_WORKDIR}

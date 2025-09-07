@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+
+cron_add root "01 21 * * * /command/with-contenv /usr/bin/autobackup >/proc/1/fd/1 2>/proc/1/fd/2"
