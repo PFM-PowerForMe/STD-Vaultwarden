@@ -26,7 +26,9 @@ ENV USER="root" \
      PKG_CONFIG_ALL_STATIC=1
 
 WORKDIR /
-RUN apk add --no-cache --virtual .build-deps \
+RUN --mount=type=cache,target=/var/cache/apk \
+    --mount=type=cache,target=/etc/apk/cache \
+    apk add --virtual .build-deps \
                 bash \
                 build-base \
                 pkgconf \
@@ -46,15 +48,22 @@ RUN USER=root cargo new --bin /backend
 WORKDIR /backend/
 COPY source-src/Cargo.toml source-src/Cargo.lock source-src/rust-toolchain.toml source-src/build.rs ./
 COPY source-src/macros/ ./macros/
-RUN cargo build --features ${FEATURES} --profile "${CARGO_PROFILE}" --target ${CPU_ARCH}-unknown-linux-musl && \
-     find . -not -path "./target*" -delete
-COPY source-src/ .
-RUN touch build.rs src/main.rs && \
+RUN --mount=type=cache,id=vw-cargo-registry,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,id=vw-cargo-git,target=/root/.cargo/git,sharing=locked \
+    --mount=type=cache,id=vw-target,target=/backend/target,sharing=locked \
     cargo build --features ${FEATURES} --profile "${CARGO_PROFILE}" --target ${CPU_ARCH}-unknown-linux-musl && \
+    find . -not -path "./target*" -delete
+COPY source-src/ .
+RUN --mount=type=cache,id=vw-cargo-registry,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,id=vw-cargo-git,target=/root/.cargo/git,sharing=locked \
+    --mount=type=cache,id=vw-target,target=/backend/target,sharing=locked \
+    touch build.rs src/main.rs && \
+    cargo build --features ${FEATURES} --profile "${CARGO_PROFILE}" --target ${CPU_ARCH}-unknown-linux-musl && \
+    mkdir -p /backend/final && \
     if [[ "${CARGO_PROFILE}" == "dev" ]] ; then \
-        ln -vfs "/backend/target/${CPU_ARCH}-unknown-linux-musl/debug" /backend/target/final ; \
+        cp "/backend/target/${CPU_ARCH}-unknown-linux-musl/debug/vaultwarden" /backend/final/vaultwarden ; \
     else \
-        ln -vfs "/backend/target/${CPU_ARCH}-unknown-linux-musl/${CARGO_PROFILE}" /backend/target/final ; \
+        cp "/backend/target/${CPU_ARCH}-unknown-linux-musl/${CARGO_PROFILE}/vaultwarden" /backend/final/vaultwarden ; \
     fi
 
 
@@ -72,7 +81,7 @@ COPY --from=caddy / /
 COPY rootfs/ /
 COPY --from=cli-autobackup / /
 COPY --from=frontend /frontend/ /opt/vw/web-vault/
-COPY --from=backend /backend/target/final/vaultwarden /opt/vw/vaultwarden
+COPY --from=backend /backend/final/vaultwarden /opt/vw/vaultwarden
 RUN /pfm/bin/fix_env
 WORKDIR ${VW_WORKDIR}
 VOLUME ${VW_WORKDIR}/data
