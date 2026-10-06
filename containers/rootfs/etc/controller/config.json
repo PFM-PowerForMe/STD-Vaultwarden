@@ -1,0 +1,62 @@
+{
+  "dirs": [
+    { "path": "/opt/vw", "owner": "65532:65532", "recursive": true },
+    { "path": "/run/caddy", "owner": "65532:65532" },
+    { "path": "/tmp/caddy", "owner": "65532:65532", "recursive": true }
+  ],
+  "templates": [
+    {
+      "in": "/etc/caddy/templates/vaultwarden.tmpl",
+      "out": "/tmp/caddy/Caddyfile",
+      "mode": "0644",
+      "owner": "65532:65532",
+      "vars": {
+        "CR_CADDY_PASS_SERVER": "127.0.0.1",
+        "CR_CADDY_PASS_PORT": "8000",
+        "CR_CADDY_REAL_IP": "X-Forwarded-For"
+      },
+      "commands": [
+        ["/usr/bin/caddy", "fmt", "--overwrite", "{out}"]
+      ]
+    }
+  ],
+  "processes": [
+    {
+      "name": "caddy",
+      "command": [
+        "/usr/bin/caddy",
+        "run",
+        "--config",
+        "/tmp/caddy/Caddyfile",
+        "--adapter",
+        "caddyfile",
+        "--pidfile",
+        "/run/caddy/caddy.pid"
+      ],
+      "dir": "/tmp/caddy",
+      "uid": 65532,
+      "gid": 65532,
+      "env": {
+        "HOME": "/tmp/caddy",
+        "XDG_CONFIG_HOME": "/tmp/caddy/.config"
+      }
+    },
+    {
+      "name": "vaultwarden",
+      "command": ["/opt/vw/vaultwarden"],
+      "dir": "/opt/vw",
+      "uid": 65532,
+      "gid": 65532,
+      "env": {
+        "HOME": "/home/nonroot"
+      }
+    }
+  ],
+  "backup": {
+    "at": "21:01",
+    "timezone": "Asia/Shanghai",
+    "command": ["/usr/bin/controller", "backup"]
+  },
+  "stopGrace": "5s",
+  "restartDelay": "1s"
+}

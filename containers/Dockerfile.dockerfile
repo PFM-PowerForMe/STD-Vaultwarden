@@ -1,16 +1,12 @@
-FROM ghcr.io/pfm-powerforme/base-caddy:latest AS caddy
-FROM ghcr.io/pfm-powerforme/cli-autobackup:latest AS cli-autobackup
+FROM docker.io/library/caddy:alpine AS caddy
+FROM ghcr.io/pfm-powerforme/self-controller:latest AS controller
 FROM ghcr.io/pfm-powerforme/frontend-vaultwarden:latest AS frontend
 
-# 构建时
 FROM docker.io/library/rust:alpine AS backend
 ARG REPO
-# eg. amd64 | arm64
 ARG ARCH
-# eg. x86_64 | aarch64
 ARG CPU_ARCH
 ARG TAG
-# eg. latest
 ARG IMAGE_VERSION
 ENV REPO=$REPO \
      ARCH=$ARCH \
@@ -26,6 +22,9 @@ ENV USER="root" \
      PKG_CONFIG_ALL_STATIC=1
 
 WORKDIR /
+RUN --mount=type=cache,target=/var/cache/apk \
+    --mount=type=cache,target=/etc/apk/cache \
+    apk add --no-cache tzdata
 RUN --mount=type=cache,target=/var/cache/apk \
     --mount=type=cache,target=/etc/apk/cache \
     apk add --virtual .build-deps \
@@ -67,22 +66,30 @@ RUN --mount=type=cache,id=vw-cargo-registry,target=/root/.cargo/registry,sharing
     fi
 
 
-# 运行时
-FROM ghcr.io/pfm-powerforme/s6-box:latest AS runtime
+FROM gcr.io/distroless/static-debian13 AS runtime
 ARG TAG
-ENV ROCKET_PROFILE="production" \
+ENV PATH="/usr/bin:/" \
+     LC_ALL="C.UTF-8" \
+     LANG="C.UTF-8" \
+     TMPDIR="/tmp" \
+     ROCKET_PROFILE="production" \
      ROCKET_ADDRESS=127.0.0.1 \
      ROCKET_PORT=8000 \
      VW_VERSION=$TAG \
      VW_WORKDIR="/opt/vw" \
      CR_AUTOBACKUP_BACKUP_PATH="/opt/vw/data" \
-     CR_AUTOBACKUP_BACKUP_NAME="vaultwarden"
-COPY --from=caddy / /
+     CR_AUTOBACKUP_BACKUP_NAME="vaultwarden" \
+     CR_CONTROLLER_CONFIG="/etc/controller/config.json"
+
+COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
+COPY --from=controller /usr/bin/controller /usr/bin/controller
+COPY --chown=65532:65532 --from=frontend /frontend/ /opt/vw/web-vault/
+COPY --chown=65532:65532 --from=backend /backend/final/vaultwarden /opt/vw/vaultwarden
+COPY --from=backend /usr/share/zoneinfo/Asia/Shanghai /usr/share/zoneinfo/Asia/Shanghai
+COPY --from=backend /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 COPY rootfs/ /
-COPY --from=cli-autobackup / /
-COPY --from=frontend /frontend/ /opt/vw/web-vault/
-COPY --from=backend /backend/final/vaultwarden /opt/vw/vaultwarden
-RUN /pfm/bin/fix_env
+
 WORKDIR ${VW_WORKDIR}
 VOLUME ${VW_WORKDIR}/data
 EXPOSE 8080
+ENTRYPOINT ["/usr/bin/controller"]

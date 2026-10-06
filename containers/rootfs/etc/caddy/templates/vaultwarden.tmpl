@@ -1,0 +1,46 @@
+{
+	admin off
+	auto_https off
+	ocsp_stapling off
+	storage file_system /tmp/caddy/data
+	storage_clean_interval 24h
+	servers {
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+	}
+}
+
+:8080 {
+	log {
+		output stdout
+		format console
+	}
+
+	map {http.request.header.X-Forwarded-Port} {mapped_port} {
+		"" 443
+		default {http.request.header.X-Forwarded-Port}
+	}
+
+	header {
+		-Server
+		-X-Powered-By
+		-Via
+	}
+
+	@blocked {
+		path /admin*
+	}
+	respond @blocked 404
+
+	@envfile {
+		path_regexp env (?i)(^|/)\.env(\.|$)
+	}
+	respond @envfile 404
+
+	reverse_proxy http://$CR_CADDY_PASS_SERVER:$CR_CADDY_PASS_PORT {
+		header_up X-Forwarded-Port {mapped_port}
+		header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+		header_up X-Real-IP {http.request.header.$CR_CADDY_REAL_IP}
+		header_up X-Forwarded-For {http.request.header.$CR_CADDY_REAL_IP}
+	}
+}
